@@ -18,11 +18,10 @@ import ConfigParser
 import optparse
 import sys
 import os
-import re
 from gettext import gettext as _
-from subprocess import Popen, PIPE
 from optparse import OptionParser
 import pfile
+import utils
 
 #
 # Constants
@@ -37,52 +36,6 @@ CONFIG_FILE = _('set config file for tool options.  default: /etc/rhn/rhn-api-us
 CHANNEL = _('set the channel label of the configuration channel to convert.')
 
 
-def shell(command, exit_on_err=True):
-    """
-    Invoke shell commands and return the exit-code and any
-    output written by the command to stdout.
-
-    :param command: The command to invoke.
-    :type command: str
-    :param exit_on_err: Exit the script if the command fails.
-    :type exit_on_err: bool
-    :return: (exit-code, output)
-    :rtype: tuple
-    """
-    print command
-    call = command.split()
-    p = Popen(call, stdout=PIPE, stderr=PIPE)
-    status, output = p.wait(), p.stdout.read()
-    if exit_on_err and status != os.EX_OK:
-        print p.stderr.read()
-        sys.exit(status)
-    return status, output
-
-def chdir(path):
-    """
-    Change the working directory.  The main purpose for this method
-    is to ignore path=None and display the change of directory to the user.
-
-    :param path: A directory path.
-    :type path: str
-    """
-    if path:
-        print 'cd %s' % path
-        os.chdir(path)
-
-
-def mkdir(path):
-    """
-    Make the directory (including parents) if it doesn't exist.
-
-    :param path: A directory path.
-    :type path: str
-    """
-    if path:
-        print 'mkdir -p %s' % path
-        os.mkdir(path)
-
-
 def clean(options, module_name):
     """
     Clean up before and after building when specified by the
@@ -92,7 +45,7 @@ def clean(options, module_name):
     :type options: optparse.Options
     """
     path = os.path.join(options['working_dir'], module_name)
-    shell('rm -rf %s' % path)
+    utils.shell('rm -rf %s' % path)
 
 
 def get_options():
@@ -158,7 +111,7 @@ def generate_puppet_module_template(options, name):
     :type options: optparse.Options
     """
     try:
-        shell('puppet module generate %s' % name)
+        utils.shell('puppet module generate %s' % name)
     except Exception as e:
         print e
         sys.exit(1)
@@ -171,7 +124,7 @@ def main():
 
     _dir = os.getcwd()
     options, config_options = get_options()
-    chdir(config_options['working_dir'])
+    utils.chdir(config_options['working_dir'])
 
     # Log in
     spacewalk = xmlrpclib.Server("https://%s/rpc/api" % config_options['server'], verbose=0)
@@ -207,8 +160,7 @@ def main():
     files = spacewalk.configchannel.lookupFileInfo(spacekey, options.channel, paths)
 
     # Add files directory to module
-    path = os.path.join(config_options['working_dir'], module_name, "files")
-    mkdir(path)
+    path = os.path.join(config_options['working_dir'], module_name)
 
     fm = pfile.FileManager()
 
@@ -226,9 +178,10 @@ def main():
                     pmode=file['permissions_mode'],
                     group=file['group'],
                     owner=file['owner'],
-                    module_name=module_name)
+                    macro_start_delimiter=file['macro-start-delimiter'],
+                    macro_end_delimiter=file['macro-start-delimiter'])
 
-    fm.export(path)
+    fm.export(path, module_name, 'init')
 
     # logout
     spacewalk.auth.logout(spacekey)
