@@ -22,6 +22,7 @@ from gettext import gettext as _
 from optparse import OptionParser
 import pfile
 import utils
+import ptags
 
 #
 # Constants
@@ -167,24 +168,42 @@ def main():
     for file in files:
         print file
 
-        if file['contents_enc64']:
-            contents = file['contents'].decode('base64')
-        else:
-            contents = file['contents']
+        if file['type'] == 'file':
 
-        fm.add_file(name=file['path'].replace("/", "_"),
-                    path=file['path'],
-                    contents=contents,
-                    pmode=file['permissions_mode'],
-                    group=file['group'],
-                    owner=file['owner'],
-                    macro_start_delimiter=file['macro-start-delimiter'],
-                    macro_end_delimiter=file['macro-start-delimiter'])
+            if file.has_key('contents_enc64') and file['contents_enc64']:
+                contents = file['contents'].decode('base64')
+            elif file.has_key('contents') and file['contents']:
+                contents = file['contents']
+
+            fm.add_file(name=file['path'].replace("/", "_"),
+                        path=file['path'],
+                        contents=contents,
+                        pmode=file['permissions_mode'],
+                        group=file['group'],
+                        owner=file['owner'],
+                        macro_start_delimiter=file['macro-start-delimiter'],
+                        macro_end_delimiter=file['macro-end-delimiter'])
+
+        elif file['type'] == 'directory':
+            fm.add_directory(name=file['path'].replace("/", "_"),
+                        path=file['path'],
+                        pmode=file['permissions_mode'],
+                        group=file['group'],
+                        owner=file['owner'])
 
     fm.export(path, module_name, 'init')
 
     # logout
     spacewalk.auth.logout(spacekey)
+
+    #raw = "This is {{rhn.system.ip_address}} a {{rhn.system.hostname}} Test"
+    #print raw
+    #tm = ptags.TagManager()
+    #print tm.substitute(raw, "{{", "}}")
+
+    #raw = "This is a Test"
+    #print raw
+    #print tm.substitute(raw, "{{", "}}")
 
 
 ## MAIN
