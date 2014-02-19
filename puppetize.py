@@ -68,7 +68,7 @@ def get_options():
         sys.exit(1)
 
     if not opts.cfg_file:
-        opts.cfg_file = '/etc/rhn/rhn-api-user.conf'
+        opts.cfg_file = '/etc/puppetize/puppetize.conf'
 
     # Read Config File
     config_opts = {}
