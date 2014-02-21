@@ -32,9 +32,12 @@ USAGE = _('%prog <options> [working-dir]')
 
 DESCRIPTION = _('Convert Satellite5 Configuration Channel into Puppet Module.')
 
-CONFIG_FILE = _('set config file for tool options.  default: /etc/rhn/rhn-api-user.conf')
+CONFIG_FILE = _('Set config file for tool options.  default: /etc/puppetize/puppetize.conf')
 
-CHANNEL = _('set the channel label of the configuration channel to convert.')
+CHANNEL = _('Set the channel label of the configuration channel to convert.')
+
+MAPPING = _('Set the mapping file for Spacewalk macros to Puppet Facts.  If not supplied, the default mapping in the \
+             puppetize.conf will be used.')
 
 
 def clean(options, module_name):
@@ -60,6 +63,8 @@ def get_options():
     parser = OptionParser(usage=USAGE, description=DESCRIPTION)
     parser.add_option("-f", "--config-file", dest="cfg_file", help=CONFIG_FILE)
     parser.add_option("-c", "--channel", dest="channel", help=CHANNEL)
+    parser.add_option("-m", "--mapping", dest="mapping", help=MAPPING)
+
     (opts, args) = parser.parse_args()
 
     # validate
@@ -70,7 +75,7 @@ def get_options():
     if not opts.cfg_file:
         opts.cfg_file = '/etc/puppetize/puppetize.conf'
 
-    # Read Config File
+    # read configuration file
     config_opts = {}
     config = ConfigParser.ConfigParser()
     try:
@@ -84,8 +89,13 @@ def get_options():
         config_opts['password'] = config.get('Spacewalk', 'password')
         config_opts['working_dir'] = config.get('Puppet', 'working_dir')
         config_opts['output_dir'] = config.get('Puppet', 'output_dir')
+        config_opts['mapping'] = config.get('Puppet', 'MAPPING')
+        if config.has_option('Puppet', 'custom_parameters'):
+            config_opts['custom_parameters'] = config.get('Puppet', 'custom_parameters').split(',')
+        else:
+            config_opts['custom_parameters'] = None
 
-    except Exception as e:
+    except:
         print "The file %s seems not to be a valid config file." % opts.cfg_file
         sys.exit(1)
 
@@ -100,6 +110,10 @@ def get_options():
         config_opts['working_dir'] = os.getcwd()
     if not config_opts['output_dir']:
         config_opts['output_dir'] = config_opts['working_dir']
+
+    # set mapping
+    if not opts.mapping:
+        opts.mapping = config_opts['mapping']
 
     return opts, config_opts
 
@@ -142,7 +156,8 @@ def main():
     # Get Org Name
     org = spacewalk.org.getDetails(spacekey, channel_details['orgId'])
 
-    module_name = (org['name']+"-"+channel_details['name']).replace(" ", "_")
+    module_name = (org['name']+"-"+channel_details['name']).replace(" ", "_").lower()
+    class_name = (channel_details['name']).replace(" ", "_").lower()
 
     # Clean module if exists
     clean(config_options, module_name)
@@ -163,7 +178,13 @@ def main():
     # Add files directory to module
     path = os.path.join(config_options['working_dir'], module_name)
 
-    fm = pfile.FileManager()
+    # Read in Mapping Json
+    fh = open(options.mapping, "r")
+    mapping = fh.read()
+    fh.close()
+
+    fm = pfile.FileManager.Instance()
+    fm.set_tag_manager(ptags.TagManager(mapping=mapping))
 
     for file in files:
         print file
@@ -186,25 +207,20 @@ def main():
 
         elif file['type'] == 'directory':
             fm.add_directory(name=file['path'].replace("/", "_"),
-                        path=file['path'],
-                        pmode=file['permissions_mode'],
-                        group=file['group'],
-                        owner=file['owner'])
+                             path=file['path'],
+                             pmode=file['permissions_mode'],
+                             group=file['group'],
+                             owner=file['owner'])
 
-    fm.export(path, module_name, 'init')
+        elif file['type'] == 'symlink':
+            fm.add_symlink(name=file['path'].replace("/", "_"),
+                           path=file['path'],
+                           target_path=file['target_path'])
+
+    fm.export(path, class_name, 'init', config_options['custom_parameters'])
 
     # logout
     spacewalk.auth.logout(spacekey)
-
-    #raw = "This is {{rhn.system.ip_address}} a {{rhn.system.hostname}} Test"
-    #print raw
-    #tm = ptags.TagManager()
-    #print tm.substitute(raw, "{{", "}}")
-
-    #raw = "This is a Test"
-    #print raw
-    #print tm.substitute(raw, "{{", "}}")
-
 
 ## MAIN
 if __name__ == "__main__":

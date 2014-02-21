@@ -12,22 +12,22 @@
 import os
 import utils
 
+# Default Mapping
 MAPPING = {
     "mapping": {
         "rhn.system.sid": "",
         "rhn.system.profile_name": "",
         "rhn.system.description": "",
-        "rhn.system.hostname": "fqdn",
-        "rhn.system.ip_address": "ipaddress",
+        "rhn.system.hostname": "@fqdn",
+        "rhn.system.ip_address": "@ipaddress",
         "rhn.system.custom_info(key_name)": "",
-        "rhn.system.net_interface.ip_address(eth_device)": "ipaddress_{NETWORK INTERFACE}",
-        "rhn.system.net_interface.netmask(eth_device)": "netmask_{NETWORK INTERFACE}",
+        "rhn.system.net_interface.ip_address(eth_device)": "@ipaddress_{NETWORK INTERFACE}",
+        "rhn.system.net_interface.netmask(eth_device)": "@netmask_{NETWORK INTERFACE}",
         "rhn.system.net_interface.broadcast(eth_device)": "",
-        "rhn.system.net_interface.hardware_address(eth_device)": "macaddress_{NETWORK INTERFACE}",
+        "rhn.system.net_interface.hardware_address(eth_device)": "@macaddress_{NETWORK INTERFACE}",
         "rhn.system.net_interface.driver_module(eth_device)": ""
     }
 }
-
 
 class TagManager(object):
     """
@@ -71,7 +71,7 @@ class TagManager(object):
         for tag, replacement in self.mapping['mapping'].iteritems():
             if tag in marked_string:
                 marked_string = marked_string.replace(tag, replacement)
-                return True, "@" + marked_string
+                return True, "<%= " + marked_string + " %>"
         return False, marked_string
 
 

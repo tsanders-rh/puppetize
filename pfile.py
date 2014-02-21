@@ -12,13 +12,16 @@
 import os
 import utils
 import ptags
+from utils import Singleton
+
 
 class File(object):
     """
     This class represents a file to be written into a Puppet module.
     """
 
-    def __init__(self, name, type, path, pmode, group, owner, contents=None, macro_start_delimeter=None, macro_end_delimeter=None):
+    def __init__(self, name, type, path, pmode=None, group=None, owner=None, contents=None,
+                 macro_start_delimeter=None, macro_end_delimeter=None, target=None):
         self.name = name
         self.type = type
         self.path = path
@@ -28,6 +31,7 @@ class File(object):
         self.owner = owner
         self.macro_start_delimeter = macro_start_delimeter
         self.macro_end_delimeter = macro_end_delimeter
+        self.target = target
 
         if self.type == 'file' and self.contents:
             tm = ptags.TagManager()
@@ -52,11 +56,11 @@ class File(object):
             #create file dsl entry for app.pp
             dsl =  "file { '%s':\n" % self.name
             dsl += "  path => '%s',\n" % self.path
-            dsl += "  source => 'puppet://modules/%s/%s',\n" % (module_name, self.path.replace("/", "_"))
-            dsl += "  group => '%s'\n" % self.group
-            dsl += "  owner => '%s'\n" % self.owner
+            dsl += "  source => 'puppet:///modules/%s/%s',\n" % (module_name, self.path.replace("/", "_"))
+            dsl += "  group => '%s',\n" % self.group
+            dsl += "  owner => '%s',\n" % self.owner
             dsl += "  ensure => 'file',\n"
-            dsl += "  mode => '%s'\n" % self.pmode
+            dsl += "  mode => '%s',\n" % self.pmode
             dsl += "}\n\n"
 
         elif self.type == 'template':
@@ -70,10 +74,10 @@ class File(object):
             #create file dsl entry for app.pp
             dsl =  "file { '%s':\n" % self.name
             dsl += "  path => '%s',\n" % self.path
-            dsl += "  group => '%s'\n" % self.group
-            dsl += "  owner => '%s'\n" % self.owner
+            dsl += "  group => '%s',\n" % self.group
+            dsl += "  owner => '%s',\n" % self.owner
             dsl += "  ensure => 'file',\n"
-            dsl += "  mode => '%s'\n" % self.pmode
+            dsl += "  mode => '%s',\n" % self.pmode
             dsl += "  content => template('%s/%s.erb'),\n" % (module_name, self.path.replace("/", "_"))
             dsl += "}\n\n"
 
@@ -82,10 +86,10 @@ class File(object):
             #create file dsl entry for app.pp
             dsl =  "file { '%s':\n" % self.name
             dsl += "  path => '%s',\n" % self.path
-            dsl += "  group => '%s'\n" % self.group
-            dsl += "  owner => '%s'\n" % self.owner
+            dsl += "  group => '%s',\n" % self.group
+            dsl += "  owner => '%s',\n" % self.owner
             dsl += "  ensure => 'directory',\n"
-            dsl += "  mode => '%s'\n" % self.pmode
+            dsl += "  mode => '%s',\n" % self.pmode
             dsl += "}\n\n"
 
         elif self.type == 'symlink':
@@ -93,16 +97,14 @@ class File(object):
             #create file dsl entry for app.pp
             dsl =  "file { '%s':\n" % self.name
             dsl += "  path => '%s',\n" % self.path
-            dsl += "  group => '%s'\n" % self.group
-            dsl += "  owner => '%s'\n" % self.owner
+            dsl += "  target => '%s',\n" % self.target
             dsl += "  ensure => 'link',\n"
-            dsl += "  mode => '%s'\n" % self.pmode
             dsl += "}\n\n"
-
 
         return dsl
 
 
+@Singleton
 class FileManager(object):
     """
     This class manages all interaction with arbitrary files and .erb templates within a Puppet Module.
@@ -110,6 +112,11 @@ class FileManager(object):
 
     def __init__(self):
         self.files = {}
+        self.tag_manager = ptags.TagManager()
+
+    def set_tag_manager(self, manager):
+        if manager:
+            self.tag_manager = manager
 
     def add_file(self, **kwargs):
         name = kwargs['name']
@@ -136,11 +143,35 @@ class FileManager(object):
 
         self.files[name] = File(name, type, path, pmode, group, owner)
 
+    def add_symlink(self, **kwargs):
+        name= kwargs['name']
+        path = kwargs['path']
+        target = kwargs['target_path']
+        type='symlink'
+
+        self.files[name] = File(name, type, path, target=target)
+
     def remove_file(self, name):
+        """
+        Removes a File Object from management by the File Manager.
+
+        """
         if name in self.files.keys():
             del self.files[name]
 
-    def export(self, path, module_name, manifest_name):
+    def write_parameters(self, parameters):
+        """
+        Returns a properly formatted parameters clause for a Puppet Class.
+
+        """
+        pstring = ""
+        pstring += "(\n"
+        for parameter in parameters:
+            pstring += "%s,\n" % parameter
+        pstring += ")\n"
+        return pstring
+
+    def export(self, path, module_name, manifest_name, parameters=None):
 
         files_path = os.path.join(path, 'files')
         utils.mkdir(files_path)
@@ -159,8 +190,13 @@ class FileManager(object):
             if line.startswith("class"):
                 break
 
-        fh.seek(offset)
-        fh.write("\n")
+        fh.seek(offset-2)
+
+        if parameters:
+            fh.write(self.write_parameters(parameters))
+
+        fh.write("{\n\n")
+
         for name, file in self.files.iteritems():
             fh.write(file.export(path, module_name))
         fh.write("}")
