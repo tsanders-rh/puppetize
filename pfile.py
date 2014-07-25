@@ -21,7 +21,8 @@ class File(object):
     """
 
     def __init__(self, name, type, path, pmode=None, group=None, owner=None, contents=None,
-                 macro_start_delimeter=None, macro_end_delimeter=None, target=None):
+                 macro_start_delimeter=None, macro_end_delimeter=None, target=None,
+                 is_binary=False):
         self.name = name
         self.type = type
         self.path = path
@@ -35,10 +36,11 @@ class File(object):
 
         if self.type == 'file' and self.contents:
             tm = ptags.TagManager()
-            replaced, content = tm.substitute(self.contents, self.macro_start_delimeter, self.macro_end_delimeter)
-            if replaced:
-                self.contents = content
-                self.type = 'template'
+            if not is_binary:
+                replaced, content = tm.substitute(self.contents, self.macro_start_delimeter, self.macro_end_delimeter)
+                if replaced:
+                    self.contents = content
+                    self.type = 'template'
 
     def __eq__(self, other):
         return self.name == other.name
@@ -128,9 +130,10 @@ class FileManager(object):
         owner = kwargs['owner']
         macro_start_delimiter = kwargs['macro_start_delimiter']
         macro_end_delimiter = kwargs['macro_end_delimiter']
+        is_binary = kwargs['is_binary']
 
         self.files[name] = File(name, type, path, pmode, group, owner, contents, macro_start_delimiter,
-                                macro_end_delimiter)
+                                macro_end_delimiter, is_binary=is_binary)
 
     def add_directory(self, **kwargs):
         name= kwargs['name']

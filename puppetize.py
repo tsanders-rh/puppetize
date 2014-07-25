@@ -216,10 +216,16 @@ def main():
 
         if file['type'] == 'file':
 
+            enc64 = False
             if file.has_key('contents_enc64') and file['contents_enc64']:
                 contents = file['contents'].decode('base64')
+                macro_start = ''
+                macro_end = ''
+                enc64 = True
             elif file.has_key('contents') and file['contents']:
                 contents = file['contents']
+                macro_start = file['macro-start-delimiter']
+                macro_end = file['macro-end-delimiter']
 
             fm.add_file(name=file['path'].replace("/", "_"),
                         path=file['path'],
@@ -227,8 +233,10 @@ def main():
                         pmode=file['permissions_mode'],
                         group=file['group'],
                         owner=file['owner'],
-                        macro_start_delimiter=file['macro-start-delimiter'],
-                        macro_end_delimiter=file['macro-end-delimiter'])
+                        macro_start_delimiter=macro_start,
+                        macro_end_delimiter=macro_end,
+                        is_binary=enc64
+                        )
 
         elif file['type'] == 'directory':
             fm.add_directory(name=file['path'].replace("/", "_"),
