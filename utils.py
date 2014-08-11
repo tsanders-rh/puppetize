@@ -59,7 +59,7 @@ def mkdir(path):
     """
     if path:
         print 'mkdir -p %s' % path
-        os.mkdir(path)
+        os.makedirs(path)
 
 
 class Singleton:

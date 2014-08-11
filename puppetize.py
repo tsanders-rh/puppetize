@@ -18,6 +18,8 @@ import ConfigParser
 import optparse
 import sys
 import os
+import re
+import subprocess
 from gettext import gettext as _
 from optparse import OptionParser
 import pfile
@@ -117,16 +119,35 @@ def get_options():
 
     return opts, config_opts
 
-def generate_puppet_module_template(options, name):
+def generate_puppet_module_template(options, name, sat5_url):
     """
     Build puppet module template to contain the
     config channel files.
 
     :param options: The command line options.
     :type options: optparse.Options
+
+    :param name: module name (org-cfgchannel)
+    :type name: string
+
+    :param sat5_url: The sat5/sw instance we're drawing data from
+    :type sat5_url: string
     """
     try:
-        utils.shell('puppet module generate %s' % name)
+        answers = ['0.1.0', 'Red Hat', 'GPLv2',
+                   'Module created from org-cfgchannel ' + name,
+                   sat5_url, sat5_url, sat5_url, 'Y']
+        gen_cmd = 'puppet module generate %s' % name
+        process = subprocess.Popen(gen_cmd,
+                                    stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT,
+                                    shell=True, )
+        for a in answers:
+            process.stdout.readline()
+            process.stdin.write(a)
+            process.stdin.write('\n')
+
     except Exception as e:
         print e
         sys.exit(1)
@@ -156,14 +177,17 @@ def main():
     # Get Org Name
     org = spacewalk.org.getDetails(spacekey, channel_details['orgId'])
 
-    module_name = (org['name']+"-"+channel_details['name']).replace(" ", "_").lower()
-    class_name = (channel_details['name']).replace(" ", "_").lower()
+    # puppetlabs usernames can be alphanumeric *only*
+    # puppetlabs classnames can be only alphanumeric and underscore
+    username = re.sub('[^0-9a-zA-Z]*', '', org['name']).lower()
+    class_name = re.sub('[^0-9a-zA-Z_]', '_', channel_details['name']).lower()
+    module_name = username+'-'+class_name
 
     # Clean module if exists
     clean(config_options, module_name)
 
     # Generate Module Template
-    generate_puppet_module_template(options, name=module_name)
+    generate_puppet_module_template(options, name=module_name, sat5_url=config_options['server'])
 
     # Get files contained in channel
     files = spacewalk.configchannel.listFiles(spacekey, options.channel)
@@ -187,14 +211,21 @@ def main():
     fm.set_tag_manager(ptags.TagManager(mapping=mapping))
 
     for file in files:
+        print 'JSON for path %s:' % file['path']
         print file
 
         if file['type'] == 'file':
 
+            enc64 = False
             if file.has_key('contents_enc64') and file['contents_enc64']:
                 contents = file['contents'].decode('base64')
+                macro_start = ''
+                macro_end = ''
+                enc64 = True
             elif file.has_key('contents') and file['contents']:
                 contents = file['contents']
+                macro_start = file['macro-start-delimiter']
+                macro_end = file['macro-end-delimiter']
 
             fm.add_file(name=file['path'].replace("/", "_"),
                         path=file['path'],
@@ -202,8 +233,10 @@ def main():
                         pmode=file['permissions_mode'],
                         group=file['group'],
                         owner=file['owner'],
-                        macro_start_delimiter=file['macro-start-delimiter'],
-                        macro_end_delimiter=file['macro-end-delimiter'])
+                        macro_start_delimiter=macro_start,
+                        macro_end_delimiter=macro_end,
+                        is_binary=enc64
+                        )
 
         elif file['type'] == 'directory':
             fm.add_directory(name=file['path'].replace("/", "_"),
@@ -218,6 +251,7 @@ def main():
                            target_path=file['target_path'])
 
     fm.export(path, class_name, 'init', config_options['custom_parameters'])
+
 
     # logout
     spacewalk.auth.logout(spacekey)
